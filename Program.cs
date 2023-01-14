@@ -8,22 +8,23 @@ Console.WriteLine("Starting SQS Heartbeat Demo");
 await Host.CreateDefaultBuilder()
     .ConfigureServices((context, services) =>
     {
-        var queueURL = "https://sqs.eu-west-3.amazonaws.com/285159751624/heartbeat-test-queue";
 
-        services.AddSingleton<IAmazonSQS>(new AmazonSQSClient(
-            awsAccessKeyId: "AKIAUEZGYP7EO7V5OX4U",
-            awsSecretAccessKey: "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"));
+        var queueUrl = context.Configuration.GetSection("AwsConfig:QueueUrl").Value;
+        var awsAccessKeyId = context.Configuration.GetSection("AwsConfig:AwsAccessKeyId").Value;
+        var awsSecretAccessKey = context.Configuration.GetSection("AwsConfig:AwsSecretAccessKey").Value;
 
-        services.AddHostedService<MessageSender>(service => 
+        services.AddSingleton<IAmazonSQS>(new AmazonSQSClient(awsAccessKeyId, awsSecretAccessKey));
+
+        services.AddHostedService<MessageSender>(service =>
             new MessageSender(
                 service.GetRequiredService<IAmazonSQS>(),
-                queueURL
+                queueUrl
             ));
 
         services.AddHostedService<MessageReceiver>(service =>
             new MessageReceiver(
                 service.GetRequiredService<IAmazonSQS>(),
-                queueURL
+                queueUrl
             ));
     })
     .Build()

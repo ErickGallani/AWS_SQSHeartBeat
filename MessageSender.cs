@@ -1,12 +1,12 @@
-﻿using Amazon.SQS;
-using Microsoft.Extensions.Hosting;
-using Bogus;
-using System.Text.Json;
+﻿using System.Text.Json;
+using Amazon.SQS;
 using Amazon.SQS.Model;
+using Bogus;
+using Microsoft.Extensions.Hosting;
 
 namespace AWS_SQSHeartBeat
 {
-    public class MessageSender: BackgroundService
+    public class MessageSender : BackgroundService
     {
         private readonly IAmazonSQS _sqsClient;
         private readonly string _queueURL;
@@ -27,7 +27,7 @@ namespace AWS_SQSHeartBeat
 
                 var faker = new Faker();
 
-                for (int i = 0; i < 1; i++)
+                for (int i = 0; i < 10; i++)
                 {
                     var json = new
                     {
@@ -47,6 +47,7 @@ namespace AWS_SQSHeartBeat
         public override Task StopAsync(CancellationToken cancellationToken)
         {
             _cancellationToken = cancellationToken;
+
 
             Console.WriteLine("Stopped Sender worker");
 

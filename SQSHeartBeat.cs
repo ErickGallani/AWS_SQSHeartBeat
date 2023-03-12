@@ -1,4 +1,5 @@
-﻿using Amazon.SQS;
+﻿using System.Net;
+using Amazon.SQS;
 using Amazon.SQS.Model;
 
 namespace AWS_SQSHeartBeat
@@ -9,32 +10,33 @@ namespace AWS_SQSHeartBeat
         private readonly string _queueURL;
         private readonly Message _message;
 
-
-        private CancellationToken _internalToken;
-        private CancellationTokenSource _internalTokenSource;
-
         public SQSHeartBeat(Message message, IAmazonSQS sqsClient, string queueURL)
         {
             _sqsClient = sqsClient;
             _queueURL = queueURL;
             _message = message;
-
-            _internalTokenSource = new CancellationTokenSource();
-            _internalToken = _internalTokenSource.Token;
         }
 
-        public async Task ProcessMessageAsync(Func<Message, CancellationTokenSource, CancellationToken, Task> messageProcessingFunction, CancellationToken cancellationToken)
+        public async Task ProcessMessageAsync(Func<Message, CancellationToken, Task> messageProcessingFunction, CancellationToken cancellationToken)
         {
-            using (CancellationTokenSource linkedTokens = 
-                CancellationTokenSource.CreateLinkedTokenSource(_internalToken, cancellationToken))
+            using (var heartBeatLinkedToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            using (var processingFunctionTokens = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                await Task.WhenAll(
-                    messageProcessingFunction(_message, _internalTokenSource, cancellationToken),
-                    StartBeatAsync(_message.ReceiptHandle, _message.MessageId, linkedTokens.Token));
-            }
-        }            
+                var heartBeat = StartBeatAsync(_message.ReceiptHandle, _message.MessageId, processingFunctionTokens, heartBeatLinkedToken.Token);
 
-        private async Task StartBeatAsync(string receiptHandle, string messageId, CancellationToken cancellationToken)
+                try
+                {
+                    await messageProcessingFunction(_message, processingFunctionTokens.Token);
+                }
+                finally
+                {
+                    heartBeatLinkedToken.Cancel();
+                    await heartBeat;
+                }
+            }
+        }
+
+        private async Task StartBeatAsync(string receiptHandle, string messageId, CancellationTokenSource processingHandler, CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -42,18 +44,28 @@ namespace AWS_SQSHeartBeat
                 {
                     Console.WriteLine($"Resetting Visibility Timeout {messageId}");
 
-                    await _sqsClient.ChangeMessageVisibilityAsync(new ChangeMessageVisibilityRequest
+                    var response = await _sqsClient.ChangeMessageVisibilityAsync(new ChangeMessageVisibilityRequest
                     {
                         QueueUrl = _queueURL,
                         ReceiptHandle = receiptHandle,
                         VisibilityTimeout = 30
                     }, cancellationToken);
 
+                    if (response.HttpStatusCode != HttpStatusCode.OK)
+                    {
+                        throw new Exception("ChangeMessageVisibilityAsync returned non successful status code");
+                    }
+
                     await Task.Delay(15_000);
                 }
                 catch (TaskCanceledException)
                 {
                     Console.WriteLine("Task cancelled");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to ChangeMessageVisibility giving up processing current message: {ex.Message}");
+                    processingHandler.Cancel(); // cancel the handler to avoid issues due to the problem changing the visibility timeout
                 }
             }
         }

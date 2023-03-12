@@ -1,5 +1,4 @@
-﻿using System.Threading;
-using Amazon.SQS;
+﻿using Amazon.SQS;
 using Amazon.SQS.Model;
 using Microsoft.Extensions.Hosting;
 
@@ -43,7 +42,7 @@ namespace AWS_SQSHeartBeat
 
         private async Task ReceiveMessageAsync()
         {
-            while(!_cancellationToken.IsCancellationRequested)
+            while (!_cancellationToken.IsCancellationRequested)
             {
                 var messageResponse = await _sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest
                 {
@@ -63,7 +62,7 @@ namespace AWS_SQSHeartBeat
             }
         }
 
-        private async Task DoStuff(Message message, CancellationTokenSource heartBeatToken, CancellationToken token)
+        private async Task DoStuff(Message message, CancellationToken cancellationToken)
         {
             try
             {
@@ -71,17 +70,18 @@ namespace AWS_SQSHeartBeat
 
                 Console.WriteLine($"\nProcessing Message {message.MessageId} with processing time {processingTime / 1000} seconds");
 
-                // The default Visibility Timeout is 30 seconds, so this delay 
-                // will add a random delay in simulation of a long running processing messsage
-                // that can take from 31 seconds to 91 seconds
-                await Task.Delay(processingTime);
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    // The default Visibility Timeout is 30 seconds, so this delay 
+                    // will add a random delay in simulation of a long running processing messsage
+                    // that can take from 31 seconds to 91 seconds
+                    await Task.Delay(processingTime);
 
-                Console.WriteLine($"\nDeleting message {message.MessageId} from queue...");
+                    Console.WriteLine($"\nDeleting message {message.MessageId} from queue...");
 
-                await _sqsClient.DeleteMessageAsync(_queueURL, message.ReceiptHandle, token);
-
-                heartBeatToken.Cancel();
-            } 
+                    await _sqsClient.DeleteMessageAsync(_queueURL, message.ReceiptHandle, cancellationToken);
+                }
+            }
             catch (TaskCanceledException)
             {
                 Console.WriteLine("Task cancelled");

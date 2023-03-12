@@ -8,7 +8,6 @@ Console.WriteLine("Starting SQS Heartbeat Demo");
 await Host.CreateDefaultBuilder()
     .ConfigureServices((context, services) =>
     {
-
         var queueUrl = context.Configuration.GetSection("AwsConfig:QueueUrl").Value;
         var awsAccessKeyId = context.Configuration.GetSection("AwsConfig:AwsAccessKeyId").Value;
         var awsSecretAccessKey = context.Configuration.GetSection("AwsConfig:AwsSecretAccessKey").Value;
